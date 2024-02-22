@@ -16,6 +16,37 @@ typedef struct struct_message {
 
 struct_message myData;
 
+// Function to process the image buffer, calculate, and store pixel values in an array
+void processGrayscaleImage(const camera_fb_t *fb) {
+  uint8_t *buf = fb->buf;
+  size_t len = fb->len;
+
+  // Dynamically allocate an array to hold the grayscale values of each pixel
+  uint8_t *pixelValues = new uint8_t[len];
+
+  // Check if memory allocation was successful
+  if (pixelValues == nullptr) {
+    Serial.println("Failed to allocate memory for pixel values");
+    return;
+  }
+
+  // Copy each pixel's value into the array
+  for (size_t i = 0; i < len; i++) {
+    pixelValues[i] = buf[i];
+    // For demonstration, let's still print out the values
+    // In a real application, you might want to remove this to save time
+    Serial.print(pixelValues[i], HEX);
+    Serial.print(" ");
+    if ((i + 1) % 16 == 0) Serial.println(); // New line for readability
+  }
+  Serial.println();
+
+  // Here you can process the pixelValues array as needed...
+
+  // Don't forget to free the allocated memory when done to avoid memory leaks
+  delete[] pixelValues;
+}
+
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&myData, incomingData, sizeof(myData));
   Serial.print("Data received: ");
@@ -36,10 +67,12 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     } else {
       Serial.println("Camera capture failed.");
     }
+    processGrayscaleImage(fb);
     ws2812SetColor(2); // Reset LED color or turn off
     myData.takePicture = 0; // Reset the flag
   }
 }
+
 
 // cameraSetup remains unchanged, ensure it's configured for your specific camera model
 
@@ -59,13 +92,13 @@ int cameraSetup(void) {
   config.pin_pclk = PCLK_GPIO_NUM;
   config.pin_vsync = VSYNC_GPIO_NUM;
   config.pin_href = HREF_GPIO_NUM;
-  config.pin_sscb_sda = SIOD_GPIO_NUM;
-  config.pin_sscb_scl = SIOC_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.frame_size = FRAMESIZE_UXGA;
-  config.pixel_format = PIXFORMAT_JPEG; // for streaming
+  config.pixel_format = PIXFORMAT_GRAYSCALE; // GRAYSCALE
   config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
   config.fb_location = CAMERA_FB_IN_PSRAM;
   config.jpeg_quality = 12;
@@ -92,7 +125,7 @@ int cameraSetup(void) {
 
   sensor_t * s = esp_camera_sensor_get();
   // initial sensors are flipped vertically and colors are a bit saturated
-  s->set_vflip(s, 1); // flip it back
+  s->set_vflip(s, 0); // flip it back
   s->set_brightness(s, 1); // up the brightness just a bit
   s->set_saturation(s, 0); // lower the saturation
 
