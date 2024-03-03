@@ -9,6 +9,10 @@
 #include "ws2812.h"
 #include "sd_read_write.h"
 
+//FRAME_SIZE FRAMESIZE_QQVGA
+#define WIDTH 160
+#define HEIGHT 120    
+
 // Define a structure for your message
 typedef struct struct_message {
   int takePicture; // Signal to take a picture
@@ -16,35 +20,51 @@ typedef struct struct_message {
 
 struct_message myData;
 
-// Function to process the image buffer, calculate, and store pixel values in an array
-void processGrayscaleImage(const camera_fb_t *fb) {
-  uint8_t *buf = fb->buf;
-  size_t len = fb->len;
+// Function to convert a pixel's value to a hex string (for grayscale images)
+// This function needs to be adapted if working with actual RGB values
+String toHex(uint8_t value) {
+    char hexStr[3];
+    sprintf(hexStr, "%02X", value);
+    return String(hexStr);
+}
 
-  // Dynamically allocate an array to hold the grayscale values of each pixel
-  uint8_t *pixelValues = new uint8_t[len];
+// Function to process the image buffer, calculate, and store pixel hex values in a 1D array
+String* processRGBImageToHex(const camera_fb_t *fb, size_t &len) {
+    static String *hexValues = nullptr; // Static pointer to hold hex values between captures
+    static size_t previousLen = 0; // Keep track of the previous allocation size
 
-  // Check if memory allocation was successful
-  if (pixelValues == nullptr) {
-    Serial.println("Failed to allocate memory for pixel values");
-    return;
-  }
+    uint8_t *buf = fb->buf;
+    size_t pixelCount = fb->width * fb->height; // Calculate the total number of pixels
 
-  // Copy each pixel's value into the array
-  for (size_t i = 0; i < len; i++) {
-    pixelValues[i] = buf[i];
-    // For demonstration, let's still print out the values
-    // In a real application, you might want to remove this to save time
-    Serial.print(pixelValues[i], HEX);
-    Serial.print(" ");
-    if ((i + 1) % 16 == 0) Serial.println(); // New line for readability
-  }
-  Serial.println();
+    // Check if we need to reallocate memory (only if the new image size is different)
+    if (pixelCount != previousLen) {
+        // Free previously allocated memory if it exists
+        if (hexValues != nullptr) {
+            delete[] hexValues;
+            hexValues = nullptr;
+        }
 
-  // Here you can process the pixelValues array as needed...
+        // Allocate new memory for the current image
+        hexValues = new String[pixelCount];
 
-  // Don't forget to free the allocated memory when done to avoid memory leaks
-  delete[] pixelValues;
+        // Update the tracking variable to the new length
+        previousLen = pixelCount;
+    }
+
+    // Check if memory allocation was successful
+    if (hexValues == nullptr) {
+        Serial.println("Failed to allocate memory for hex values");
+        return nullptr;
+    }
+
+    // Convert and copy each pixel's value into the array as a hex string
+    for (size_t i = 0; i < pixelCount; i++) {
+        hexValues[i] = toHex(buf[i]);
+    }
+
+    len = pixelCount; // Update the length to the actual number of processed pixels
+    // Return the pointer to the array containing the hex values
+    return hexValues;
 }
 
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
@@ -67,7 +87,8 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     } else {
       Serial.println("Camera capture failed.");
     }
-    processGrayscaleImage(fb);
+    size_t len = 19200;
+    processRGBImageToHex(fb, len); // 160 pixels (width) * 120 pixels (height) = 19,200 pixels
     ws2812SetColor(2); // Reset LED color or turn off
     myData.takePicture = 0; // Reset the flag
   }
@@ -98,7 +119,7 @@ int cameraSetup(void) {
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.frame_size = FRAMESIZE_UXGA;
-  config.pixel_format = PIXFORMAT_GRAYSCALE; // GRAYSCALE
+  config.pixel_format = PIXFORMAT_JPEG; // GRAYSCALE
   config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
   config.fb_location = CAMERA_FB_IN_PSRAM;
   config.jpeg_quality = 12;
@@ -132,6 +153,7 @@ int cameraSetup(void) {
   Serial.println("Camera configuration complete!");
   return 1;
 }
+
 void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(false);
